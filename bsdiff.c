@@ -208,7 +208,17 @@ int main(int argc, char *argv[])
     while (scan < newsize) {
         oldscore = 0;
 
+        /* If we come across a large block of data that only differs
+         * by less than 8 bytes, this loop will take a long time to
+         * go past that block of data. We need to track the number of
+         * times we're stuck in the block and break out of it. */
+        int num_less_than_eight = 0;
+        off_t prev_len, prev_oldscore, prev_pos;
         for (scsc = scan += len; scan < newsize; scan++) {
+            prev_len = len;
+            prev_oldscore = oldscore;
+            prev_pos = pos;
+
             len = search(I, old, oldsize, new + scan, newsize - scan,
                          0, oldsize, &pos);
 
@@ -223,6 +233,15 @@ int main(int argc, char *argv[])
             if ((scan + lastoffset < oldsize) &&
                 (old[scan + lastoffset] == new[scan]))
                 oldscore--;
+
+            if (len == prev_len - 1 &&
+                oldscore == prev_oldscore - 1 &&
+                pos == prev_pos + 1 && len > oldscore && len <= oldscore + 8)
+                ++num_less_than_eight;
+            else
+                num_less_than_eight = 0;
+            if (num_less_than_eight > 100)
+                break;
         };
 
         if ((len != oldscore) || (scan == newsize)) {
