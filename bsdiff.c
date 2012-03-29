@@ -234,9 +234,12 @@ int main(int argc, char *argv[])
                 (old[scan + lastoffset] == new[scan]))
                 oldscore--;
 
-            if (len == prev_len - 1 &&
-                oldscore == prev_oldscore - 1 &&
-                pos == prev_pos + 1 && len > oldscore && len <= oldscore + 8)
+            const off_t fuzz = 8;
+            if (prev_len - fuzz <= len && len <= prev_len &&
+                prev_oldscore - fuzz <= oldscore &&
+                oldscore <= prev_oldscore &&
+                prev_pos <= pos && pos <= prev_pos + fuzz &&
+                oldscore <= len && len <= oldscore + fuzz)
                 ++num_less_than_eight;
             else
                 num_less_than_eight = 0;
