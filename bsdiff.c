@@ -60,7 +60,7 @@ static off_t matchlen(u_char *old, off_t oldsize, u_char *new, off_t newsize)
     return i;
 }
 
-static off_t search(off_t *I, u_char *old, off_t oldsize,
+static off_t search(saidx_t *I, u_char *old, off_t oldsize,
                     u_char *new, off_t newsize, off_t st, off_t en,
                     off_t *pos)
 {
@@ -129,7 +129,7 @@ int main(int argc, char *argv[])
     u_char *old, *new;
     off_t oldsize, newsize;
     saidx_t *I;
-    off_t scan, pos, len;
+    off_t scan, pos = 0, len;
     off_t lastscan, lastpos, lastoffset;
     off_t oldscore, scsc;
     off_t s, Sf, lenf, Sb, lenb;
