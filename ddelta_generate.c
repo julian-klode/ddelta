@@ -52,6 +52,11 @@ static off_t matchlen(u_char *old, off_t oldsize, u_char *new, off_t newsize)
     return i;
 }
 
+// This is a binary search of the string |new_buf| of size |newsize| (or a
+// prefix of it) in the |old| string with size |oldsize| using the suffix array
+// |I|. |st| and |en| is the start and end of the search range (inclusive).
+// Returns the length of the longest prefix found and stores the position of the
+// string found in |*pos|.
 static off_t search(saidx_t *I, u_char *old, off_t oldsize,
                     u_char *new, off_t newsize, off_t st, off_t en,
                     off_t *pos)
@@ -170,7 +175,7 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
             prev_oldscore = oldscore;
             prev_pos = pos;
 
-            len = search(I, old, oldsize, new + scan, newsize - scan,
+            len = search(I, old, oldsize - 1, new + scan, newsize - scan,
                          0, oldsize, &pos);
 
             for (; scsc < scan + len; scsc++)
