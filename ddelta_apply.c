@@ -1,4 +1,4 @@
-/* bspatch2.c - A sane reimplementation of bspatch
+/* ddelta_apply.c - A sane reimplementation of bspatch
  * 
  * Copyright (C) 2017 Julian Andres Klode <jak@debian.org>
  */
@@ -36,9 +36,27 @@ struct ddelta_entry_header {
     } seek;
 };
 
-/**
- * Copy 'bytes' bytes from a to b
- */
+static int ddelta_header_read(struct ddelta_header *header, FILE *file)
+{
+    if (fread_unlocked(header, sizeof(*header), 1, file) < 1)
+        return -1;
+
+    header->new_file_size = be64toh(header->new_file_size);
+    return 0;
+}
+
+static int ddelta_entry_header_read(struct ddelta_entry_header *entry,
+                                    FILE *file)
+{
+    if (fread_unlocked(entry, sizeof(*entry), 1, file) < 1)
+        return -1;
+
+    entry->diff = be64toh(entry->diff);
+    entry->extra = be64toh(entry->extra);
+    entry->seek.raw = be64toh(entry->seek.raw);
+    return 0;
+}
+
 static int copy_bytes(FILE *a, FILE *b, uint64_t bytes)
 {
     char buf[4096];
@@ -68,21 +86,15 @@ int ddelta_apply(FILE *patchfd, FILE *oldfd, FILE *newfd)
     struct ddelta_header header;
     struct ddelta_entry_header entry;
 
-    if (fread_unlocked(&header, sizeof(header), 1, patchfd) < 1)
+    if (ddelta_header_read(&header, patchfd) < 0)
         return -1;
 
-    header.new_file_size = be64toh(header.new_file_size);
-
-    while (fread_unlocked(&entry, sizeof(entry), 1, patchfd) > 0) {
-        /* convert endian */
-        entry.diff = be64toh(entry.diff);
-        entry.extra = be64toh(entry.extra);
-        entry.seek.raw = be64toh(entry.seek.raw);
-
+    while (ddelta_entry_header_read(&entry, patchfd) == 0) {
         /* Apply the diff */
         for (uint64_t i = 0; i < entry.diff; i++) {
             unsigned char old;
             unsigned char patch;
+
             if (fread_unlocked(&patch, 1, 1, patchfd) < 1)
                 return -1;
             if (fread_unlocked(&old, 1, 1, oldfd) < 1)
@@ -98,11 +110,35 @@ int ddelta_apply(FILE *patchfd, FILE *oldfd, FILE *newfd)
             return -1;
 
         // Skip remaining bytes
-        if (fseek(oldfd, entry.seek.value, SEEK_SET) < 0)
+        if (fseek(oldfd, entry.seek.value, SEEK_CUR) < 0) {
+            fprintf(stderr, "Could not seek %ld bytes", entry.seek.value);
             return -1;
+        }
     }
 
     fflush(newfd);
+
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc != 4) {
+        fprintf(stderr, "usage: %s oldfile newfile patchfile\n", argv[0]);
+    }
+
+    FILE *old = fopen(argv[1], "rb");
+    FILE *new = fopen(argv[2], "wb");
+    FILE *patch = fopen(argv[3], "rb");
+
+    if (old == NULL)
+        return perror("Cannot open old"), 1;
+    if (new == NULL)
+        return perror("Cannot open new"), 1;
+    if (patch == NULL)
+        return perror("Cannot open patch"), 1;
+
+    printf("Result: %d\n", ddelta_apply(patch, old, new));
 
     return 0;
 }
