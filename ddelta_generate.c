@@ -37,6 +37,8 @@
 
 #include <divsufsort.h>
 
+#include "ddelta.h"
+
 #define MIN(x,y) (((x)<(y)) ? (x) : (y))
 
 static off_t matchlen(u_char * old, off_t oldsize, u_char * new, off_t newsize)
@@ -91,9 +93,24 @@ void write64(FILE *file, int64_t off)
         err(1, "fwrite(output)");
 }
 
-int main(int argc, char *argv[])
+static off_t read_file(int fd, unsigned char **buf)
 {
-    int fd;
+    off_t size;
+    if (fd < 0)
+        return -1;
+
+    if (((size = lseek(fd, 0, SEEK_END)) == -1) ||
+        ((*buf = malloc(size + 1)) == NULL) ||
+        (lseek(fd, 0, SEEK_SET) != 0) ||
+        (read(fd, *buf, size) != size) || (close(fd) == -1))
+        return -1;
+
+    return size;
+}
+
+int ddelta_generate(const char *oldname, int oldfd, const char *newname,
+                    int newfd, const char *patchname, int patchfd)
+{
     u_char *old, *new;
     off_t oldsize, newsize;
     saidx_t *I;
@@ -105,20 +122,11 @@ int main(int argc, char *argv[])
     off_t i;
     FILE *pf;
 
-    if (argc != 4)
-        errx(1, "usage: %s oldfile newfile patchfile\n", argv[0]);
-
-    /* Allocate oldsize+1 bytes instead of oldsize bytes to ensure
-       that we never try to malloc(0) and get a NULL pointer */
-    if (((fd = open(argv[1], O_RDONLY, 0)) < 0) ||
-        ((oldsize = lseek(fd, 0, SEEK_END)) == -1) ||
-        ((old = malloc(oldsize + 1)) == NULL) ||
-        (lseek(fd, 0, SEEK_SET) != 0) ||
-        (read(fd, old, oldsize) != oldsize) || (close(fd) == -1))
-        err(1, "%s", argv[1]);
-
+    oldsize = read_file(oldfd, &old);
     if (oldsize > INT32_MAX) {
-        err(1, "File to large: %s", argv[1]);
+        err(1, "File to large: %s", oldname);
+    } else if (oldsize < 0) {
+        err(1, "Could not read file %s", oldname);
     }
 
     if (((I = malloc((oldsize + 1) * sizeof(saidx_t))) == NULL))
@@ -127,22 +135,16 @@ int main(int argc, char *argv[])
     if (divsufsort(old, I, oldsize))
         err(1, "divsufsort");
 
-    /* Allocate newsize+1 bytes instead of newsize bytes to ensure
-       that we never try to malloc(0) and get a NULL pointer */
-    if (((fd = open(argv[2], O_RDONLY, 0)) < 0) ||
-        ((newsize = lseek(fd, 0, SEEK_END)) == -1) ||
-        ((new = malloc(newsize + 1)) == NULL) ||
-        (lseek(fd, 0, SEEK_SET) != 0) ||
-        (read(fd, new, newsize) != newsize) || (close(fd) == -1))
-        err(1, "%s", argv[2]);
-
+    newsize = read_file(newfd, &new);
     if (newsize > INT32_MAX) {
-        err(1, "File to large: %s", argv[2]);
+        err(1, "File to large: %s", newname);
+    } else if (newsize < 0) {
+        err(1, "Could not read file %s", newname);
     }
 
     /* Create the patch file */
-    if ((pf = fopen(argv[3], "w")) == NULL)
-        err(1, "%s", argv[3]);
+    if ((pf = fdopen(patchfd, "w")) == NULL)
+        err(1, "Cannot open patch file as FILE object: %s", patchname);
 
     /* Header is "DDELTA40", followed by size of new file. Afterwards, there
      * are entries (see loop) */
@@ -278,3 +280,24 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+
+#ifndef DDELTA_NO_MAIN
+int main(int argc, char *argv[])
+{
+    if (argc != 4) {
+        errx(1, "usage: %s oldfile newfile patchfile\n", argv[0]);
+    }
+
+    int oldfd = open(argv[1], O_RDONLY, 0);
+    if (oldfd < 0)
+        err(1, "%s", argv[1]);
+    int newfd = open(argv[2], O_RDONLY, 0);
+    if (newfd < 0)
+        err(1, "%s", argv[2]);
+    int patchfd = open(argv[3], O_WRONLY, 0);
+    if (patchfd < 0)
+        err(1, "%s", argv[3]);
+
+    return ddelta_generate(argv[1], oldfd, argv[2], newfd, argv[3], patchfd);
+}
+#endif
