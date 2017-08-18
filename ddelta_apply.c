@@ -24,6 +24,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "ddelta.h"
+
 #include <endian.h>
 #include <stdint.h>
 #include <stdio.h>
