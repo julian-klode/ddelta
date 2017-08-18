@@ -7,6 +7,23 @@ have to be.
 ddelta uses the same underlying algorithms as bsdiff, with the exception of
 replacing qsufsort with divsufsort, and a new format for patch files
 
+## Requirements
+
+Given an old file of `m` bytes and a new file of `n` bytes.
+
+For diffing:
+
+* memory requirement is `5m + n` bytes (rather than `9m + n` on 64-bit systems)
+* both files must be seek()able (for now)
+
+For patching:
+
+* memory requirement is constant (rather than `m + n`) - three buffers essentially.
+* only the patch file must be seek()able
+
+Furthermore, libdivsufsort is needed for compiling and running the diff
+algorithm. It's not needed for patching.
+
 ## New patch file format
 
 ### bsdiff patch format
