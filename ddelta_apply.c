@@ -78,6 +78,26 @@ static int ddelta_entry_header_read(struct ddelta_entry_header *entry,
     return 0;
 }
 
+static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint64_t size)
+{
+    /* Apply the diff */
+    for (uint64_t i = 0; i < size; i++) {
+        unsigned char old;
+        unsigned char patch;
+
+        if (fread_unlocked(&patch, 1, 1, patchfd) < 1)
+            return -1;
+        if (fread_unlocked(&old, 1, 1, oldfd) < 1)
+            return -1;
+
+        unsigned char new = old + patch;
+        if (fwrite_unlocked(&new, 1, 1, newfd) < 1)
+            return -1;
+    }
+
+    return 0;
+}
+
 static int copy_bytes(FILE *a, FILE *b, uint64_t bytes)
 {
     char buf[4096];
@@ -116,20 +136,8 @@ int ddelta_apply(FILE *patchfd, FILE *oldfd, FILE *newfd)
             return 0;
         }
 
-        /* Apply the diff */
-        for (uint64_t i = 0; i < entry.diff; i++) {
-            unsigned char old;
-            unsigned char patch;
-
-            if (fread_unlocked(&patch, 1, 1, patchfd) < 1)
-                return -1;
-            if (fread_unlocked(&old, 1, 1, oldfd) < 1)
-                return -1;
-
-            unsigned char new = old + patch;
-            if (fwrite_unlocked(&new, 1, 1, newfd) < 1)
-                return -1;
-        }
+        if (apply_diff(patchfd, oldfd, newfd, entry.diff) < 0)
+            return -1;
 
         // Copy the bytes over
         if (copy_bytes(patchfd, newfd, entry.extra) < 0)
