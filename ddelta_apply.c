@@ -29,6 +29,7 @@
 #include <endian.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 /* Fork of BSDIFF that does not compress ctrl, diff, extra blocks */
 #define DDELTA_MAGIC "DDELTA40"
@@ -143,6 +144,9 @@ int ddelta_apply(FILE *patchfd, FILE *oldfd, FILE *newfd)
 
     if (ddelta_header_read(&header, patchfd) < 0)
         return -1;
+
+    if (memcmp(DDELTA_MAGIC, header.magic, sizeof(header.magic)) != 0)
+        return -42;
 
     while (ddelta_entry_header_read(&entry, patchfd) == 0) {
         if (entry.diff == 0 && entry.extra == 0 && entry.seek.value == 0) {
