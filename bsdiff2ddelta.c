@@ -246,5 +246,9 @@ int main(int argc, char *argv[])
     free(new);
     free(old);
 
+    write64(stdout, 0);
+    write64(stdout, 0);
+    write64(stdout, 0);
+
     return 0;
 }
