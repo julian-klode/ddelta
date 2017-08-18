@@ -80,19 +80,27 @@ static int ddelta_entry_header_read(struct ddelta_entry_header *entry,
 
 static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint64_t size)
 {
+#define DIFF_BUFFER_SIZE 512
     /* Apply the diff */
-    for (uint64_t i = 0; i < size; i++) {
-        unsigned char old;
-        unsigned char patch;
+    while (size > 0) {
+        unsigned char old[DIFF_BUFFER_SIZE];
+        unsigned char patch[DIFF_BUFFER_SIZE];
+        const uint64_t toread =
+            size > DIFF_BUFFER_SIZE ? DIFF_BUFFER_SIZE : size;
 
-        if (fread_unlocked(&patch, 1, 1, patchfd) < 1)
+        if (fread_unlocked(&patch, 1, toread, patchfd) < toread)
             return -1;
-        if (fread_unlocked(&old, 1, 1, oldfd) < 1)
+        if (fread_unlocked(&old, 1, toread, oldfd) < toread)
             return -1;
 
-        unsigned char new = old + patch;
-        if (fwrite_unlocked(&new, 1, 1, newfd) < 1)
+        for (uint64_t j = 0; j < toread; j++) {
+            old[j] += patch[j];
+        }
+
+        if (fwrite_unlocked(&old, 1, toread, newfd) < toread)
             return -1;
+
+        size -= toread;
     }
 
     return 0;
