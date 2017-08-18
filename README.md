@@ -45,9 +45,12 @@ the diff data and the extra data associated with the file:
     uint64_t diff;
     uint64_t extra;
     int64_t seek;
+
     unsigned char diffdata[diff];
     unsigned char extradata[extra];
     
 This way, we can simply stream the patch, allowing us to read it from a pipe,
 for example. The patches are uncompressed, as they are intended to be stored
 in an .xz compressed tarball.
+
+The file is terminated by an entry where all header fields are 0.

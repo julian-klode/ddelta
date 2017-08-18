@@ -111,6 +111,11 @@ int ddelta_apply(FILE *patchfd, FILE *oldfd, FILE *newfd)
         return -1;
 
     while (ddelta_entry_header_read(&entry, patchfd) == 0) {
+        if (entry.diff == 0 && entry.extra == 0 && entry.seek.value == 0) {
+            fflush(newfd);
+            return 0;
+        }
+
         /* Apply the diff */
         for (uint64_t i = 0; i < entry.diff; i++) {
             unsigned char old;
@@ -137,9 +142,7 @@ int ddelta_apply(FILE *patchfd, FILE *oldfd, FILE *newfd)
         }
     }
 
-    fflush(newfd);
-
-    return 0;
+    return -1;
 }
 
 #ifndef JKPATCH_NO_MAIN
