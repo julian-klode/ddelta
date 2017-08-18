@@ -35,13 +35,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#if _FILE_OFFSET_BITS == 64
-#include "divsufsort64.h"
-#define saidx_t saidx64_t
-#define divsufsort divsufsort64
-#else
-#include "divsufsort.h"
-#endif
+#include <divsufsort.h>
 
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
@@ -123,6 +117,10 @@ int main(int argc, char *argv[])
         (read(fd, old, oldsize) != oldsize) || (close(fd) == -1))
         err(1, "%s", argv[1]);
 
+    if (oldsize > INT32_MAX) {
+        err(1, "File to large: %s", argv[1]);
+    }
+
     if (((I = malloc((oldsize + 1) * sizeof(saidx_t))) == NULL))
         err(1, NULL);
 
@@ -137,6 +135,10 @@ int main(int argc, char *argv[])
         (lseek(fd, 0, SEEK_SET) != 0) ||
         (read(fd, new, newsize) != newsize) || (close(fd) == -1))
         err(1, "%s", argv[2]);
+
+    if (newsize > INT32_MAX) {
+        err(1, "File to large: %s", argv[2]);
+    }
 
     /* Create the patch file */
     if ((pf = fopen(argv[3], "w")) == NULL)
