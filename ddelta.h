@@ -3,6 +3,8 @@
 
 #include <stdio.h>
 
+struct buffered_fd;
+
 /**
  * Generates a diff from the files in oldfd and newfd in patchfd.
  *
@@ -19,6 +21,6 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
  *
  * The old file must be seekable.
  */
-int ddelta_apply(FILE *patchfd, FILE *oldfd, FILE *newfd);
+int ddelta_apply(struct buffered_fd *patchfd, struct buffered_fd *oldfd, struct buffered_fd *newfd);
 
 #endif
