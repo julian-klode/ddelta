@@ -123,7 +123,7 @@ static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint64_t size)
 static int copy_bytes(FILE *a, FILE *b, uint64_t bytes)
 {
     char buf[DDELTA_BLOCK_SIZE];
-    for (uint64_t i = 0; i < bytes; i++) {
+    while (bytes > 0) {
         uint64_t toread = sizeof(buf);
         if (toread > bytes)
             toread = bytes;
