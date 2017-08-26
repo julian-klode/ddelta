@@ -30,6 +30,12 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/param.h>
+
+// Size of blocks to work on at once
+#ifndef DDELTA_BLOCK_SIZE
+#define DDELTA_BLOCK_SIZE (32 * 1024)
+#endif
 
 /* Fork of BSDIFF that does not compress ctrl, diff, extra blocks */
 #define DDELTA_MAGIC "DDELTA40"
@@ -84,26 +90,27 @@ static int ddelta_entry_header_read(struct ddelta_entry_header *entry,
 static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint64_t size)
 {
 #ifdef __GNUC__
-    typedef unsigned char uchar_vector __attribute__ ((vector_size(256)));
+    typedef unsigned char uchar_vector __attribute__ ((vector_size(16)));
 #else
-    typedef unsigned char uchar_vector[256];
+    typedef unsigned char uchar_vector;
 #endif
-    uchar_vector old;
-    uchar_vector patch;
+    uchar_vector old[DDELTA_BLOCK_SIZE / sizeof(uchar_vector)];
+    uchar_vector patch[DDELTA_BLOCK_SIZE / sizeof(uchar_vector)];
 
     /* Apply the diff */
     while (size > 0) {
         const uint64_t toread = sizeof(old) < size ? sizeof(old) : size;
+        const uint64_t items_to_add = MIN(sizeof(uchar_vector) + toread,
+                                          sizeof(old)) / sizeof(uchar_vector);
+
         if (fread_unlocked(&patch, 1, toread, patchfd) < toread)
             return -1;
         if (fread_unlocked(&old, 1, toread, oldfd) < toread)
             return -1;
-#ifdef __GNUC__
-        old += patch;
-#else
-        for (unsigned int i = 0; i < toread; i++)
+
+        for (unsigned int i = 0; i < items_to_add; i++)
             old[i] += patch[i];
-#endif
+
         if (fwrite_unlocked(&old, 1, toread, newfd) < toread)
             return -1;
 
@@ -115,7 +122,7 @@ static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint64_t size)
 
 static int copy_bytes(FILE *a, FILE *b, uint64_t bytes)
 {
-    char buf[4096];
+    char buf[DDELTA_BLOCK_SIZE];
     for (uint64_t i = 0; i < bytes; i++) {
         uint64_t toread = sizeof(buf);
         if (toread > bytes)
