@@ -294,7 +294,7 @@ int main(int argc, char *argv[])
     int newfd = open(argv[2], O_RDONLY, 0);
     if (newfd < 0)
         err(1, "%s", argv[2]);
-    int patchfd = open(argv[3], O_WRONLY | O_CREAT, 0644);
+    int patchfd = open(argv[3], O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (patchfd < 0)
         err(1, "%s", argv[3]);
 
