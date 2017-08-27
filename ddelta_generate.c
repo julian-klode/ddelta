@@ -38,7 +38,9 @@
 
 #include "ddelta.h"
 
+#ifndef MIN
 #define MIN(x,y) (((x)<(y)) ? (x) : (y))
+#endif
 
 static off_t matchlen(u_char * old, off_t oldsize, u_char * new, off_t newsize)
 {

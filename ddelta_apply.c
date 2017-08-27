@@ -29,7 +29,11 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/param.h>
+
+#ifndef MIN
+#define MIN(x,y) (((x)<(y)) ? (x) : (y))
+#endif
+
 
 // Size of blocks to work on at once
 #ifndef DDELTA_BLOCK_SIZE
@@ -117,7 +121,7 @@ static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint64_t size)
 
     /* Apply the diff */
     while (size > 0) {
-        const uint64_t toread = sizeof(old) < size ? sizeof(old) : size;
+        const uint64_t toread = MIN(sizeof(old), size);
         const uint64_t items_to_add = MIN(sizeof(uchar_vector) + toread,
                                           sizeof(old)) / sizeof(uchar_vector);
 
@@ -142,9 +146,7 @@ static int copy_bytes(FILE *a, FILE *b, uint64_t bytes)
 {
     char buf[DDELTA_BLOCK_SIZE];
     while (bytes > 0) {
-        uint64_t toread = sizeof(buf);
-        if (toread > bytes)
-            toread = bytes;
+        uint64_t toread = MIN(sizeof(buf), bytes);
 
         if (fread_unlocked(&buf, toread, 1, a) < 1)
             return -1;
