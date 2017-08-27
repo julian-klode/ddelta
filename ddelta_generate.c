@@ -84,18 +84,16 @@ static off_t search(saidx_t * I, u_char * old, off_t oldsize,
     };
 }
 
-void write64(FILE *file, int64_t off)
+static void write64(FILE *file, uint64_t off)
 {
-    union {
-        int64_t i;
-        uint64_t u;
-    } u;
-
-    u.i = off;
-
-    u.u = htobe64(u.u);
-    if (fwrite(&u, sizeof(u), 1, file) < 1)
+    off = htobe64(off);
+    if (fwrite(&off, sizeof(off), 1, file) < 1)
         err(1, "fwrite(output)");
+}
+
+static uint64_t ddelta_to_unsigned(int64_t i)
+{
+    return i >= 0 ? (uint64_t) i : ~(uint64_t) (-i) + 1;
 }
 
 static off_t read_file(int fd, unsigned char **buf)
@@ -137,7 +135,7 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
     if (((I = malloc((oldsize + 1) * sizeof(saidx_t))) == NULL))
         err(1, NULL);
 
-    if (divsufsort(old, I, oldsize))
+    if (divsufsort(old, I, (int32_t) oldsize))
         err(1, "divsufsort");
 
     newsize = read_file(newfd, &new);
@@ -154,7 +152,7 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
     /* Header is "DDELTA40", followed by size of new file. Afterwards, there
      * are entries (see loop) */
     fputs("DDELTA40", pf);
-    write64(pf, newsize);
+    write64(pf, (uint64_t) newsize);
 
     scan = 0;
     len = 0;
@@ -252,9 +250,13 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
                 lenb -= lens;
             };
 
-            write64(pf, lenf);
-            write64(pf, (scan - lenb) - (lastscan + lenf));
-            write64(pf, (pos - lenb) - (lastpos + lenf));
+            if (lenf < 0)
+                err(1, "lenf is negative");
+            write64(pf, (uint64_t) lenf);
+            if ((scan - lenb) - (lastscan + lenf) < 0)
+                err(1, "len extra is negative");
+            write64(pf, (uint64_t) ((scan - lenb) - (lastscan + lenf)));
+            write64(pf, ddelta_to_unsigned((pos - lenb) - (lastpos + lenf)));
 
             for (i = 0; i < lenf; i++)
                 if (fputc_unlocked(new[lastscan + i] - old[lastpos + i], pf) ==
