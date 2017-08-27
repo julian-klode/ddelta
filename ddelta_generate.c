@@ -276,11 +276,11 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
             write64(pf, ddelta_to_unsigned((pos - lenb) - (lastpos + lenf)));
 
             for (i = 0; i < lenf; i++)
-                if (fputc_unlocked(new[lastscan + i] - old[lastpos + i], pf) ==
+                if (fputc(new[lastscan + i] - old[lastpos + i], pf) ==
                     EOF)
                     err(1, "fputc(difference)");
             for (i = 0; i < (scan - lenb) - (lastscan + lenf); i++)
-                if (fputc_unlocked(new[lastscan + lenf + i], pf) == EOF)
+                if (fputc(new[lastscan + lenf + i], pf) == EOF)
                     err(1, "fputc(extra)");
 
             lastscan = scan - lenb;

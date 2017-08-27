@@ -90,7 +90,7 @@ static int64_t debdelta_from_unsigned(uint64_t u)
 
 static int ddelta_header_read(struct ddelta_header *header, FILE *file)
 {
-    if (fread_unlocked(header, sizeof(*header), 1, file) < 1)
+    if (fread(header, sizeof(*header), 1, file) < 1)
         return -1;
 
     header->new_file_size = ddelta_be64toh(header->new_file_size);
@@ -100,7 +100,7 @@ static int ddelta_header_read(struct ddelta_header *header, FILE *file)
 static int ddelta_entry_header_read(struct ddelta_entry_header *entry,
                                     FILE *file)
 {
-    if (fread_unlocked(entry, sizeof(*entry), 1, file) < 1)
+    if (fread(entry, sizeof(*entry), 1, file) < 1)
         return -1;
 
     entry->diff = ddelta_be64toh(entry->diff);
@@ -125,15 +125,15 @@ static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint64_t size)
         const uint64_t items_to_add = MIN(sizeof(uchar_vector) + toread,
                                           sizeof(old)) / sizeof(uchar_vector);
 
-        if (fread_unlocked(&patch, 1, toread, patchfd) < toread)
+        if (fread(&patch, 1, toread, patchfd) < toread)
             return -1;
-        if (fread_unlocked(&old, 1, toread, oldfd) < toread)
+        if (fread(&old, 1, toread, oldfd) < toread)
             return -1;
 
         for (unsigned int i = 0; i < items_to_add; i++)
             old[i] += patch[i];
 
-        if (fwrite_unlocked(&old, 1, toread, newfd) < toread)
+        if (fwrite(&old, 1, toread, newfd) < toread)
             return -1;
 
         size -= toread;
@@ -148,9 +148,9 @@ static int copy_bytes(FILE *a, FILE *b, uint64_t bytes)
     while (bytes > 0) {
         uint64_t toread = MIN(sizeof(buf), bytes);
 
-        if (fread_unlocked(&buf, toread, 1, a) < 1)
+        if (fread(&buf, toread, 1, a) < 1)
             return -1;
-        if (fwrite_unlocked(&buf, toread, 1, b) < 1)
+        if (fwrite(&buf, toread, 1, b) < 1)
             return -1;
 
         bytes -= toread;
