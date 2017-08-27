@@ -27,7 +27,6 @@
 
 #include <sys/types.h>
 
-#include <endian.h>
 #include <err.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -86,8 +85,24 @@ static off_t search(saidx_t * I, u_char * old, off_t oldsize,
 
 static void write64(FILE *file, uint64_t off)
 {
-    off = htobe64(off);
-    if (fwrite(&off, sizeof(off), 1, file) < 1)
+#if defined(__GNUC__) && defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    uint64_t buf = __builtin_bswap64(off);
+#elif defined(__GNUC__) && defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    uint64_t buf = off;
+#else
+    unsigned char buf[8];
+
+    buf[0] = (off >> 56) & 0xFF;
+    buf[1] = (off >> 48) & 0xFF;
+    buf[2] = (off >> 40) & 0xFF;
+    buf[3] = (off >> 32) & 0xFF;
+    buf[4] = (off >> 24) & 0xFF;
+    buf[5] = (off >> 16) & 0xFF;
+    buf[6] = (off >> 8) & 0xFF;
+    buf[7] = (off >> 0) & 0xFF;
+#endif
+
+    if (fwrite(&buf, sizeof(buf), 1, file) < 1)
         err(1, "fwrite(output)");
 }
 

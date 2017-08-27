@@ -26,7 +26,6 @@
 
 #include "ddelta.h"
 
-#include <endian.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -66,6 +65,20 @@ struct ddelta_entry_header {
     } seek;
 };
 
+static uint64_t ddelta_be64toh(uint64_t be64)
+{
+    unsigned char *buf = (unsigned char *) &be64;
+
+    return (uint64_t) buf[0] << 56
+        | (uint64_t) buf[1] << 48
+        | (uint64_t) buf[2] << 40
+        | (uint64_t) buf[3] << 32
+        | (uint64_t) buf[4] << 24
+        | (uint64_t) buf[5] << 16
+        | (uint64_t) buf[6] << 8
+        | (uint64_t) buf[7] << 0;
+}
+
 static int64_t debdelta_from_unsigned(uint64_t u)
 {
     return u & 0x80000000 ? -(int64_t) ~(u - 1) : (int64_t) u;
@@ -76,7 +89,7 @@ static int ddelta_header_read(struct ddelta_header *header, FILE *file)
     if (fread_unlocked(header, sizeof(*header), 1, file) < 1)
         return -1;
 
-    header->new_file_size = be64toh(header->new_file_size);
+    header->new_file_size = ddelta_be64toh(header->new_file_size);
     return 0;
 }
 
@@ -86,9 +99,9 @@ static int ddelta_entry_header_read(struct ddelta_entry_header *entry,
     if (fread_unlocked(entry, sizeof(*entry), 1, file) < 1)
         return -1;
 
-    entry->diff = be64toh(entry->diff);
-    entry->extra = be64toh(entry->extra);
-    entry->seek.value = debdelta_from_unsigned(be64toh(entry->seek.raw));
+    entry->diff = ddelta_be64toh(entry->diff);
+    entry->extra = ddelta_be64toh(entry->extra);
+    entry->seek.value = debdelta_from_unsigned(ddelta_be64toh(entry->seek.raw));
     return 0;
 }
 
