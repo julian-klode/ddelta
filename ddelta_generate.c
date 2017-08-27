@@ -143,6 +143,7 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
     off_t overlap, Ss, lens;
     off_t i;
     off_t oldwindow;
+    off_t oldoldwindow;
     FILE *pf;
 
     /* Create the patch file */
@@ -155,25 +156,39 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
     write64(pf, 0);
 
 #define WINDOW_SIZE 8 * 1024 * 1024
-    old = malloc(WINDOW_SIZE);
+    old = malloc(2 * WINDOW_SIZE);
     new = malloc(WINDOW_SIZE);
-    I = malloc((WINDOW_SIZE + 1) * sizeof(*I));
+    I = malloc((2 * WINDOW_SIZE + 1) * sizeof(*I));
     oldwindow = 0;
+    oldoldwindow = 0;
 
     for (;;) {
-        if (oldwindow != 0) {
-            write64(pf, 0);
-            write64(pf, 0);
-            write64(pf, oldsize - lastpos);
+        if (oldwindow != 0 || oldsize != 0) {
+            int64_t seek = oldoldwindow - pos;
+            if (seek != 0) {
+                write64(pf, 0);
+                write64(pf, 0);
+                write64(pf, ddelta_to_unsigned(seek));
+
+                printf("Seeking to %zd\n", seek);
+                /* Move the previous window to the beginning of the buffer */
+            }
+            memmove(old, old + oldoldwindow, oldwindow);
         }
-        oldsize = read(oldfd, old, WINDOW_SIZE);
+        oldsize = read(oldfd, old + oldwindow, WINDOW_SIZE);
         if (oldsize > INT32_MAX) {
             err(1, "File to large: %s", oldname);
         } else if (oldsize < 0) {
             err(1, "Could not read file %s", oldname);
         }
 
-        oldwindow += oldsize;
+        {
+            off_t new_oldsize = oldsize + oldwindow;
+
+            oldoldwindow = oldwindow;
+            oldwindow = oldsize;
+            oldsize = new_oldsize;
+        }
 
         if (divsufsort(old, I, (int32_t) oldsize))
             err(1, "divsufsort");
