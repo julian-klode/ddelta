@@ -1,9 +1,9 @@
 CFLAGS += -Wall -Wextra -O2 -g
 
 
-all: ddelta ddelta_apply
+all: ddelta_generate ddelta_apply
 
-ddelta: LDFLAGS=-ldivsufsort
+ddelta_generate: LDFLAGS=-ldivsufsort
 
-ddelta: ddelta_generate.c
+ddelta_generate: ddelta_generate.c
 ddelta_apply: ddelta_apply.c
