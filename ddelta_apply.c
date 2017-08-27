@@ -34,7 +34,7 @@
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #endif
 
-// Size of blocks to work on at once
+/* Size of blocks to work on at once */
 #ifndef DDELTA_BLOCK_SIZE
 #define DDELTA_BLOCK_SIZE (32 * 1024)
 #endif
@@ -126,6 +126,7 @@ static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint64_t size)
 
     /* Apply the diff */
     while (size > 0) {
+        unsigned int i;
         const uint64_t toread = MIN(sizeof(old), size);
         const uint64_t items_to_add = MIN(sizeof(uchar_vector) + toread,
                                           sizeof(old)) /
@@ -136,7 +137,7 @@ static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint64_t size)
         if (fread(&old, 1, toread, oldfd) < toread)
             return -1;
 
-        for (unsigned int i = 0; i < items_to_add; i++)
+        for (i = 0; i < items_to_add; i++)
             old[i] += patch[i];
 
         if (fwrite(&old, 1, toread, newfd) < toread)
@@ -190,11 +191,11 @@ int ddelta_apply(FILE *patchfd, FILE *oldfd, FILE *newfd)
         if (apply_diff(patchfd, oldfd, newfd, entry.diff) < 0)
             return -1;
 
-        // Copy the bytes over
+        /* Copy the bytes over */
         if (copy_bytes(patchfd, newfd, entry.extra) < 0)
             return -1;
 
-        // Skip remaining bytes
+        /* Skip remaining bytes */
         if (fseek(oldfd, entry.seek.value, SEEK_CUR) < 0) {
             fprintf(stderr, "Could not seek %ld bytes", entry.seek.value);
             return -1;
@@ -207,13 +208,17 @@ int ddelta_apply(FILE *patchfd, FILE *oldfd, FILE *newfd)
 #ifndef DDELTA_NO_MAIN
 int main(int argc, char *argv[])
 {
+    FILE *old;
+    FILE *new;
+    FILE *patch;
+
     if (argc != 4) {
         fprintf(stderr, "usage: %s oldfile newfile patchfile\n", argv[0]);
     }
 
-    FILE *old = fopen(argv[1], "rb");
-    FILE *new = fopen(argv[2], "wb");
-    FILE *patch = fopen(argv[3], "rb");
+    old = fopen(argv[1], "rb");
+    new = fopen(argv[2], "wb");
+    patch = fopen(argv[3], "rb");
 
     if (old == NULL)
         return perror("Cannot open old"), 1;

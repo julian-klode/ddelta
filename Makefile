@@ -1,4 +1,4 @@
-CFLAGS += -Wall -Wextra -O2 -g
+CFLAGS += -Wall -Wextra -O2 -g -std=c89 -pedantic
 
 
 all: ddelta_generate ddelta_apply

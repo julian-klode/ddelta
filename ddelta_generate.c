@@ -25,6 +25,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#define _POSIX_SOURCE
 #include <sys/types.h>
 
 #include <err.h>
@@ -42,7 +43,8 @@
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #endif
 
-static off_t matchlen(u_char *old, off_t oldsize, u_char *new, off_t newsize)
+static off_t matchlen(unsigned char *old, off_t oldsize, unsigned char *new,
+                      off_t newsize)
 {
     off_t i;
 
@@ -53,13 +55,13 @@ static off_t matchlen(u_char *old, off_t oldsize, u_char *new, off_t newsize)
     return i;
 }
 
-// This is a binary search of the string |new_buf| of size |newsize| (or a
-// prefix of it) in the |old| string with size |oldsize| using the suffix array
-// |I|. |st| and |en| is the start and end of the search range (inclusive).
-// Returns the length of the longest prefix found and stores the position of the
-// string found in |*pos|.
-static off_t search(saidx_t *I, u_char *old, off_t oldsize,
-                    u_char *new, off_t newsize, off_t st, off_t en,
+/* This is a binary search of the string |new_buf| of size |newsize| (or a
+ * prefix of it) in the |old| string with size |oldsize| using the suffix array
+ * |I|. |st| and |en| is the start and end of the search range (inclusive).
+ * Returns the length of the longest prefix found and stores the position of the
+ * string found in |*pos|. */
+static off_t search(saidx_t *I, unsigned char *old, off_t oldsize,
+                    unsigned char *new, off_t newsize, off_t st, off_t en,
                     off_t *pos)
 {
     off_t x, y;
@@ -131,7 +133,7 @@ static off_t read_file(int fd, unsigned char **buf)
 int ddelta_generate(const char *oldname, int oldfd, const char *newname,
                     int newfd, const char *patchname, int patchfd)
 {
-    u_char *old, *new;
+    unsigned char *old, *new;
     off_t oldsize, newsize;
     saidx_t *I;
     off_t scan, pos = 0, len;
@@ -177,15 +179,17 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
     lastpos = 0;
     lastoffset = 0;
     while (scan < newsize) {
-        oldscore = 0;
-
         /* If we come across a large block of data that only differs
          * by less than 8 bytes, this loop will take a long time to
          * go past that block of data. We need to track the number of
          * times we're stuck in the block and break out of it. */
         int num_less_than_eight = 0;
         off_t prev_len, prev_oldscore, prev_pos;
+
+        oldscore = 0;
         for (scsc = scan += len; scan < newsize; scan++) {
+            const off_t fuzz = 8;
+
             prev_len = len;
             prev_oldscore = oldscore;
             prev_pos = pos;
@@ -205,7 +209,6 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
                 (old[scan + lastoffset] == new[scan]))
                 oldscore--;
 
-            const off_t fuzz = 8;
             if (prev_len - fuzz <= len && len <= prev_len &&
                 prev_oldscore - fuzz <= oldscore &&
                 oldscore <= prev_oldscore &&
@@ -276,8 +279,7 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
             write64(pf, ddelta_to_unsigned((pos - lenb) - (lastpos + lenf)));
 
             for (i = 0; i < lenf; i++)
-                if (fputc(new[lastscan + i] - old[lastpos + i], pf) ==
-                    EOF)
+                if (fputc(new[lastscan + i] - old[lastpos + i], pf) == EOF)
                     err(1, "fputc(difference)");
             for (i = 0; i < (scan - lenb) - (lastscan + lenf); i++)
                 if (fputc(new[lastscan + lenf + i], pf) == EOF)
@@ -289,7 +291,7 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
         };
     };
 
-    // File terminator
+    /* File terminator */
     write64(pf, 0);
     write64(pf, 0);
     write64(pf, 0);
@@ -308,17 +310,21 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
 #ifndef DDELTA_NO_MAIN
 int main(int argc, char *argv[])
 {
+    int oldfd;
+    int newfd;
+    int patchfd;
+
     if (argc != 4) {
         errx(1, "usage: %s oldfile newfile patchfile\n", argv[0]);
     }
 
-    int oldfd = open(argv[1], O_RDONLY, 0);
+    oldfd = open(argv[1], O_RDONLY, 0);
     if (oldfd < 0)
         err(1, "%s", argv[1]);
-    int newfd = open(argv[2], O_RDONLY, 0);
+    newfd = open(argv[2], O_RDONLY, 0);
     if (newfd < 0)
         err(1, "%s", argv[2]);
-    int patchfd = open(argv[3], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    patchfd = open(argv[3], O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (patchfd < 0)
         err(1, "%s", argv[3]);
 
