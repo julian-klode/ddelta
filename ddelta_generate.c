@@ -142,27 +142,8 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
     off_t s, Sf, lenf, Sb, lenb;
     off_t overlap, Ss, lens;
     off_t i;
+    off_t oldwindow;
     FILE *pf;
-
-    oldsize = read_file(oldfd, &old);
-    if (oldsize > INT32_MAX) {
-        err(1, "File to large: %s", oldname);
-    } else if (oldsize < 0) {
-        err(1, "Could not read file %s", oldname);
-    }
-
-    if (((I = malloc((oldsize + 1) * sizeof(saidx_t))) == NULL))
-        err(1, NULL);
-
-    if (divsufsort(old, I, (int32_t) oldsize))
-        err(1, "divsufsort");
-
-    newsize = read_file(newfd, &new);
-    if (newsize > INT32_MAX) {
-        err(1, "File to large: %s", newname);
-    } else if (newsize < 0) {
-        err(1, "Could not read file %s", newname);
-    }
 
     /* Create the patch file */
     if ((pf = fdopen(patchfd, "w")) == NULL)
@@ -171,125 +152,161 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
     /* Header is "DDELTA40", followed by size of new file. Afterwards, there
      * are entries (see loop) */
     fputs("DDELTA40", pf);
-    write64(pf, (uint64_t) newsize);
+    write64(pf, 0);
 
-    scan = 0;
-    len = 0;
-    lastscan = 0;
-    lastpos = 0;
-    lastoffset = 0;
-    while (scan < newsize) {
-        /* If we come across a large block of data that only differs
-         * by less than 8 bytes, this loop will take a long time to
-         * go past that block of data. We need to track the number of
-         * times we're stuck in the block and break out of it. */
-        int num_less_than_eight = 0;
-        off_t prev_len, prev_oldscore, prev_pos;
+#define WINDOW_SIZE 8 * 1024 * 1024
+    old = malloc(WINDOW_SIZE);
+    new = malloc(WINDOW_SIZE);
+    I = malloc((WINDOW_SIZE + 1) * sizeof(*I));
+    oldwindow = 0;
 
-        oldscore = 0;
-        for (scsc = scan += len; scan < newsize; scan++) {
-            const off_t fuzz = 8;
+    for (;;) {
+        if (oldwindow != 0) {
+            write64(pf, 0);
+            write64(pf, 0);
+            write64(pf, oldsize - lastpos);
+        }
+        oldsize = read(oldfd, old, WINDOW_SIZE);
+        if (oldsize > INT32_MAX) {
+            err(1, "File to large: %s", oldname);
+        } else if (oldsize < 0) {
+            err(1, "Could not read file %s", oldname);
+        }
 
-            prev_len = len;
-            prev_oldscore = oldscore;
-            prev_pos = pos;
+        oldwindow += oldsize;
 
-            len = search(I, old, oldsize - 1, new + scan, newsize - scan,
-                         0, oldsize, &pos);
+        if (divsufsort(old, I, (int32_t) oldsize))
+            err(1, "divsufsort");
 
-            for (; scsc < scan + len; scsc++)
-                if ((scsc + lastoffset < oldsize) &&
-                    (old[scsc + lastoffset] == new[scsc]))
-                    oldscore++;
+        newsize = read(newfd, new, WINDOW_SIZE);
+        if (newsize > INT32_MAX) {
+            err(1, "File to large: %s", newname);
+        } else if (newsize < 0) {
+            err(1, "Could not read file %s", newname);
+        }
 
-            if (((len == oldscore) && (len != 0)) || (len > oldscore + 8))
-                break;
+        if (oldsize == 0 && newsize == 0)
+            break;
 
-            if ((scan + lastoffset < oldsize) &&
-                (old[scan + lastoffset] == new[scan]))
-                oldscore--;
+        scan = 0;
+        len = 0;
+        lastscan = 0;
+        lastpos = 0;
+        lastoffset = 0;
+        while (scan < newsize) {
+            /* If we come across a large block of data that only differs
+             * by less than 8 bytes, this loop will take a long time to
+             * go past that block of data. We need to track the number of
+             * times we're stuck in the block and break out of it. */
+            int num_less_than_eight = 0;
+            off_t prev_len, prev_oldscore, prev_pos;
 
-            if (prev_len - fuzz <= len && len <= prev_len &&
-                prev_oldscore - fuzz <= oldscore &&
-                oldscore <= prev_oldscore &&
-                prev_pos <= pos && pos <= prev_pos + fuzz &&
-                oldscore <= len && len <= oldscore + fuzz)
-                ++num_less_than_eight;
-            else
-                num_less_than_eight = 0;
-            if (num_less_than_eight > 100)
-                break;
-        };
+            oldscore = 0;
+            for (scsc = scan += len; scan < newsize; scan++) {
+                const off_t fuzz = 8;
 
-        if ((len != oldscore) || (scan == newsize)) {
-            s = 0;
-            Sf = 0;
-            lenf = 0;
-            for (i = 0; (lastscan + i < scan) && (lastpos + i < oldsize);) {
-                if (old[lastpos + i] == new[lastscan + i])
-                    s++;
-                i++;
-                if (s * 2 - i > Sf * 2 - lenf) {
-                    Sf = s;
-                    lenf = i;
-                };
+                prev_len = len;
+                prev_oldscore = oldscore;
+                prev_pos = pos;
+
+                len = search(I, old, oldsize - 1, new + scan, newsize - scan,
+                             0, oldsize, &pos);
+
+                for (; scsc < scan + len; scsc++)
+                    if ((scsc + lastoffset < oldsize) &&
+                        (old[scsc + lastoffset] == new[scsc]))
+                        oldscore++;
+
+                if (((len == oldscore) && (len != 0)) || (len > oldscore + 8))
+                    break;
+
+                if ((scan + lastoffset < oldsize) &&
+                    (old[scan + lastoffset] == new[scan]))
+                    oldscore--;
+
+                if (prev_len - fuzz <= len && len <= prev_len &&
+                    prev_oldscore - fuzz <= oldscore &&
+                    oldscore <= prev_oldscore &&
+                    prev_pos <= pos && pos <= prev_pos + fuzz &&
+                    oldscore <= len && len <= oldscore + fuzz)
+                    ++num_less_than_eight;
+                else
+                    num_less_than_eight = 0;
+                if (num_less_than_eight > 100)
+                    break;
             };
 
-            lenb = 0;
-            if (scan < newsize) {
+            if ((len != oldscore) || (scan == newsize)) {
                 s = 0;
-                Sb = 0;
-                for (i = 1; (scan >= lastscan + i) && (pos >= i); i++) {
-                    if (old[pos - i] == new[scan - i])
+                Sf = 0;
+                lenf = 0;
+                for (i = 0; (lastscan + i < scan) && (lastpos + i < oldsize);) {
+                    if (old[lastpos + i] == new[lastscan + i])
                         s++;
-                    if (s * 2 - i > Sb * 2 - lenb) {
-                        Sb = s;
-                        lenb = i;
+                    i++;
+                    if (s * 2 - i > Sf * 2 - lenf) {
+                        Sf = s;
+                        lenf = i;
                     };
                 };
-            };
 
-            if (lastscan + lenf > scan - lenb) {
-                overlap = (lastscan + lenf) - (scan - lenb);
-                s = 0;
-                Ss = 0;
-                lens = 0;
-                for (i = 0; i < overlap; i++) {
-                    if (new[lastscan + lenf - overlap + i] ==
-                        old[lastpos + lenf - overlap + i])
-                        s++;
-                    if (new[scan - lenb + i] == old[pos - lenb + i])
-                        s--;
-                    if (s > Ss) {
-                        Ss = s;
-                        lens = i + 1;
+                lenb = 0;
+                if (scan < newsize) {
+                    s = 0;
+                    Sb = 0;
+                    for (i = 1; (scan >= lastscan + i) && (pos >= i); i++) {
+                        if (old[pos - i] == new[scan - i])
+                            s++;
+                        if (s * 2 - i > Sb * 2 - lenb) {
+                            Sb = s;
+                            lenb = i;
+                        };
                     };
                 };
 
-                lenf += lens - overlap;
-                lenb -= lens;
+                if (lastscan + lenf > scan - lenb) {
+                    overlap = (lastscan + lenf) - (scan - lenb);
+                    s = 0;
+                    Ss = 0;
+                    lens = 0;
+                    for (i = 0; i < overlap; i++) {
+                        if (new[lastscan + lenf - overlap + i] ==
+                            old[lastpos + lenf - overlap + i])
+                            s++;
+                        if (new[scan - lenb + i] == old[pos - lenb + i])
+                            s--;
+                        if (s > Ss) {
+                            Ss = s;
+                            lens = i + 1;
+                        };
+                    };
+
+                    lenf += lens - overlap;
+                    lenb -= lens;
+                };
+
+                if (lenf < 0)
+                    err(1, "lenf is negative");
+                write64(pf, (uint64_t) lenf);
+                if ((scan - lenb) - (lastscan + lenf) < 0)
+                    err(1, "len extra is negative");
+                write64(pf, (uint64_t)((scan - lenb) - (lastscan + lenf)));
+                write64(pf,
+                        ddelta_to_unsigned((pos - lenb) - (lastpos + lenf)));
+
+                for (i = 0; i < lenf; i++)
+                    if (fputc(new[lastscan + i] - old[lastpos + i], pf) == EOF)
+                        err(1, "fputc(difference)");
+                for (i = 0; i < (scan - lenb) - (lastscan + lenf); i++)
+                    if (fputc(new[lastscan + lenf + i], pf) == EOF)
+                        err(1, "fputc(extra)");
+
+                lastscan = scan - lenb;
+                lastpos = pos - lenb;
+                lastoffset = pos - scan;
             };
-
-            if (lenf < 0)
-                err(1, "lenf is negative");
-            write64(pf, (uint64_t) lenf);
-            if ((scan - lenb) - (lastscan + lenf) < 0)
-                err(1, "len extra is negative");
-            write64(pf, (uint64_t)((scan - lenb) - (lastscan + lenf)));
-            write64(pf, ddelta_to_unsigned((pos - lenb) - (lastpos + lenf)));
-
-            for (i = 0; i < lenf; i++)
-                if (fputc(new[lastscan + i] - old[lastpos + i], pf) == EOF)
-                    err(1, "fputc(difference)");
-            for (i = 0; i < (scan - lenb) - (lastscan + lenf); i++)
-                if (fputc(new[lastscan + lenf + i], pf) == EOF)
-                    err(1, "fputc(extra)");
-
-            lastscan = scan - lenb;
-            lastpos = pos - lenb;
-            lastoffset = pos - scan;
         };
-    };
+    }
 
     /* File terminator */
     write64(pf, 0);
