@@ -66,6 +66,11 @@ struct ddelta_entry_header {
     } seek;
 };
 
+static int64_t debdelta_from_unsigned(uint64_t u)
+{
+    return u & 0x80000000 ? -(int64_t) ~(u - 1) : (int64_t) u;
+}
+
 static int ddelta_header_read(struct ddelta_header *header, FILE *file)
 {
     if (fread_unlocked(header, sizeof(*header), 1, file) < 1)
@@ -83,7 +88,7 @@ static int ddelta_entry_header_read(struct ddelta_entry_header *entry,
 
     entry->diff = be64toh(entry->diff);
     entry->extra = be64toh(entry->extra);
-    entry->seek.raw = be64toh(entry->seek.raw);
+    entry->seek.value = debdelta_from_unsigned(be64toh(entry->seek.raw));
     return 0;
 }
 
