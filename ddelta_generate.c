@@ -159,7 +159,7 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
         DDELTA_MAGIC,
         0};
     struct ddelta_entry_header header;
-    unsigned char *old, *new;
+    unsigned char *old = NULL, *new = NULL;
     off_t oldsize, newsize;
     saidx_t *I = NULL;
     off_t scan, pos = 0, len;
@@ -318,11 +318,12 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
             if ((result = ddelta_entry_header_write(&header, pf)) < 0)
                 goto out;
 
-            for (i = 0; i < lenf; i++)
+            for (i = 0; i < lenf; i++) {
                 if (fputc(new[lastscan + i] - old[lastpos + i], pf) == EOF) {
                     result = -DDELTA_EPATCHIO;
                     goto out;
                 }
+            }
 
             if (fwrite(new + lastscan + lenf,
                        (scan - lenb) - (lastscan + lenf), 1, pf) < 1) {
