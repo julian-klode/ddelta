@@ -43,6 +43,57 @@
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #endif
 
+static uint64_t ddelta_htobe64(uint64_t host)
+{
+#if defined(__GNUC__) && defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    return __builtin_bswap64(host);
+#elif defined(__GNUC__) && defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    return host;
+#else
+    uint64_t be64;
+    unsigned char *buf = &be64;
+
+    buf[0] = (host >> 56) & 0xFF;
+    buf[1] = (host >> 48) & 0xFF;
+    buf[2] = (host >> 40) & 0xFF;
+    buf[3] = (host >> 32) & 0xFF;
+    buf[4] = (host >> 24) & 0xFF;
+    buf[5] = (host >> 16) & 0xFF;
+    buf[6] = (host >> 8) & 0xFF;
+    buf[7] = (host >> 0) & 0xFF;
+
+    return be64;
+#endif
+}
+
+static uint64_t ddelta_to_unsigned(int64_t i)
+{
+    return i >= 0 ? (uint64_t) i : ~(uint64_t)(-i) + 1;
+}
+
+static int ddelta_header_write(struct ddelta_header *header, FILE *file)
+{
+    header->new_file_size = ddelta_htobe64(header->new_file_size);
+
+    if (fwrite(header, sizeof(*header), 1, file) < 1)
+        return -DDELTA_EPATCHIO;
+
+    return 0;
+}
+
+static int ddelta_entry_header_write(struct ddelta_entry_header *entry,
+                                     FILE *file)
+{
+    entry->diff = ddelta_htobe64(entry->diff);
+    entry->extra = ddelta_htobe64(entry->extra);
+    entry->seek.raw = ddelta_htobe64(ddelta_to_unsigned(entry->seek.value));
+
+    if (fwrite(entry, sizeof(*entry), 1, file) < 1)
+        return -DDELTA_EPATCHIO;
+
+    return 0;
+}
+
 static off_t matchlen(unsigned char *old, off_t oldsize, unsigned char *new,
                       off_t newsize)
 {
@@ -87,44 +138,6 @@ static off_t search(saidx_t *I, unsigned char *old, off_t oldsize,
     };
 }
 
-static uint64_t ddelta_htobe64(uint64_t host)
-{
-#if defined(__GNUC__) && defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-    return __builtin_bswap64(host);
-#elif defined(__GNUC__) && defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    return host;
-#else
-    uint64_t be64;
-    unsigned char *buf = &be64;
-
-    buf[0] = (host >> 56) & 0xFF;
-    buf[1] = (host >> 48) & 0xFF;
-    buf[2] = (host >> 40) & 0xFF;
-    buf[3] = (host >> 32) & 0xFF;
-    buf[4] = (host >> 24) & 0xFF;
-    buf[5] = (host >> 16) & 0xFF;
-    buf[6] = (host >> 8) & 0xFF;
-    buf[7] = (host >> 0) & 0xFF;
-
-    return be64;
-#endif
-}
-
-static int write64(FILE *file, uint64_t off)
-{
-    off = ddelta_htobe64(off);
-
-    if (fwrite(&off, sizeof(off), 1, file) < 1)
-        return -DDELTA_EPATCHIO;
-
-    return 0;
-}
-
-static uint64_t ddelta_to_unsigned(int64_t i)
-{
-    return i >= 0 ? (uint64_t) i : ~(uint64_t)(-i) + 1;
-}
-
 static off_t read_file(int fd, unsigned char **buf)
 {
     off_t size;
@@ -142,6 +155,10 @@ static off_t read_file(int fd, unsigned char **buf)
 
 int ddelta_generate(int oldfd, int newfd, int patchfd)
 {
+    struct ddelta_header file_header = {
+        DDELTA_MAGIC,
+        0};
+    struct ddelta_entry_header header;
     unsigned char *old, *new;
     off_t oldsize, newsize;
     saidx_t *I = NULL;
@@ -188,16 +205,9 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
         goto out;
     }
 
-    /* Header is "DDELTA40", followed by size of new file. Afterwards, there
-     * are entries (see loop) */
-    if (fputs(DDELTA_MAGIC, pf) == EOF) {
-        result = -DDELTA_EPATCHIO;
+    file_header.new_file_size = (uint64_t) newsize;
+    if ((result = ddelta_header_write(&file_header, pf)) < 0)
         goto out;
-    }
-    if (write64(pf, (uint64_t) newsize) < 0) {
-        result = -DDELTA_EPATCHIO;
-        goto out;
-    }
 
     scan = 0;
     len = 0;
@@ -300,20 +310,25 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
                 result = -DDELTA_EALGO;
                 goto out;
             }
-            write64(pf, (uint64_t) lenf);
-            write64(pf, (uint64_t)((scan - lenb) - (lastscan + lenf)));
-            write64(pf, ddelta_to_unsigned((pos - lenb) - (lastpos + lenf)));
+
+            header.diff = (uint64_t) lenf;
+            header.extra = (uint64_t)((scan - lenb) - (lastscan + lenf));
+            header.seek.value = (pos - lenb) - (lastpos + lenf);
+
+            if ((result = ddelta_entry_header_write(&header, pf)) < 0)
+                goto out;
 
             for (i = 0; i < lenf; i++)
                 if (fputc(new[lastscan + i] - old[lastpos + i], pf) == EOF) {
                     result = -DDELTA_EPATCHIO;
                     goto out;
                 }
-            for (i = 0; i < (scan - lenb) - (lastscan + lenf); i++)
-                if (fputc(new[lastscan + lenf + i], pf) == EOF) {
-                    result = -DDELTA_EPATCHIO;
-                    goto out;
-                }
+
+            if (fwrite(new + lastscan + lenf,
+                       (scan - lenb) - (lastscan + lenf), 1, pf) < 1) {
+                result = -DDELTA_EPATCHIO;
+                goto out;
+            }
 
             lastscan = scan - lenb;
             lastpos = pos - lenb;
@@ -321,19 +336,9 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
         };
     };
 
-    /* File terminator */
-    if (write64(pf, 0) < 0) {
-        result = -DDELTA_EPATCHIO;
+    memset(&header, 0, sizeof(header));
+    if ((result = ddelta_entry_header_write(&header, pf)) < 0)
         goto out;
-    }
-    if (write64(pf, 0) < 0) {
-        result = -DDELTA_EPATCHIO;
-        goto out;
-    }
-    if (write64(pf, 0) < 0) {
-        result = -DDELTA_EPATCHIO;
-        goto out;
-    }
 
 out:
     if (pf != NULL && fclose(pf)) {
