@@ -33,6 +33,10 @@ struct ddelta_entry_header {
     } seek;
 };
 
+/* Static assertions that the headers have the correct size. */
+typedef int ddelta_assert_header_size[sizeof(struct ddelta_header) == 16 ? 1 : -1];
+typedef int ddelta_assert_entry_header_size[sizeof(struct ddelta_entry_header) == 24 ? 1 : -1];
+
 /**
  * Error codes to be returned by ddelta functions.
  *
