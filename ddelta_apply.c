@@ -59,7 +59,7 @@ static uint64_t ddelta_be64toh(uint64_t be64)
 #endif
 }
 
-static int64_t debdelta_from_unsigned(uint64_t u)
+static int64_t ddelta_from_unsigned(uint64_t u)
 {
     return u & 0x80000000 ? -(int64_t) ~(u - 1) : (int64_t) u;
 }
@@ -81,7 +81,7 @@ static int ddelta_entry_header_read(struct ddelta_entry_header *entry,
 
     entry->diff = ddelta_be64toh(entry->diff);
     entry->extra = ddelta_be64toh(entry->extra);
-    entry->seek.value = debdelta_from_unsigned(ddelta_be64toh(entry->seek.raw));
+    entry->seek.value = ddelta_from_unsigned(ddelta_be64toh(entry->seek.raw));
     return 0;
 }
 
