@@ -42,6 +42,8 @@ struct ddelta_entry_header {
 enum ddelta_error {
     /** The patch file has an invalid magic or header could not be read */
     DDELTA_EMAGIC = 1,
+    /** An unknown algorithm error occured */
+    DDELTA_EALGO,
     /** An I/O error occured while reading from (apply) or writing to (generate) the patch file */
     DDELTA_EPATCHIO,
     /** An I/O error occured while reading from the old file */
@@ -58,8 +60,7 @@ enum ddelta_error {
  * All files will be closed after the call, if you want to keep them
  * open, you must pass a dup()ed file descritopr.
  */
-int ddelta_generate(const char *oldname, int oldfd, const char *newname,
-                    int newfd, const char *patchname, int patchfd);
+int ddelta_generate(int oldfd, int newfd, int patchfd);
 
 /**
  * Generates a new file from a given patch and an old file.

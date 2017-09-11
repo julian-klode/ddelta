@@ -28,7 +28,7 @@
 #define _POSIX_SOURCE
 #include <sys/types.h>
 
-#include <err.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -87,7 +87,7 @@ static off_t search(saidx_t *I, unsigned char *old, off_t oldsize,
     };
 }
 
-static void write64(FILE *file, uint64_t off)
+static int write64(FILE *file, uint64_t off)
 {
 #if defined(__GNUC__) && defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     uint64_t buf = __builtin_bswap64(off);
@@ -107,7 +107,9 @@ static void write64(FILE *file, uint64_t off)
 #endif
 
     if (fwrite(&buf, sizeof(buf), 1, file) < 1)
-        err(1, "fwrite(output)");
+        return -DDELTA_EPATCHIO;
+
+    return 0;
 }
 
 static uint64_t ddelta_to_unsigned(int64_t i)
@@ -130,48 +132,64 @@ static off_t read_file(int fd, unsigned char **buf)
     return size;
 }
 
-int ddelta_generate(const char *oldname, int oldfd, const char *newname,
-                    int newfd, const char *patchname, int patchfd)
+int ddelta_generate(int oldfd, int newfd, int patchfd)
 {
     unsigned char *old, *new;
     off_t oldsize, newsize;
-    saidx_t *I;
+    saidx_t *I = NULL;
     off_t scan, pos = 0, len;
     off_t lastscan, lastpos, lastoffset;
     off_t oldscore, scsc;
     off_t s, Sf, lenf, Sb, lenb;
     off_t overlap, Ss, lens;
     off_t i;
-    FILE *pf;
+    FILE *pf = NULL;
+    int result = 0;
 
     oldsize = read_file(oldfd, &old);
     if (oldsize > INT32_MAX) {
-        err(1, "File to large: %s", oldname);
+        result = -DDELTA_EOLDIO;
+        goto out;
     } else if (oldsize < 0) {
-        err(1, "Could not read file %s", oldname);
+        result = -DDELTA_EOLDIO;
+        goto out;
     }
 
-    if (((I = malloc((oldsize + 1) * sizeof(saidx_t))) == NULL))
-        err(1, NULL);
+    if (((I = malloc((oldsize + 1) * sizeof(saidx_t))) == NULL)) {
+        result = -DDELTA_EALGO;
+        goto out;
+    }
 
-    if (divsufsort(old, I, (int32_t) oldsize))
-        err(1, "divsufsort");
+    if (divsufsort(old, I, (int32_t) oldsize)) {
+        result = -DDELTA_EALGO;
+        goto out;
+    }
 
     newsize = read_file(newfd, &new);
     if (newsize > INT32_MAX) {
-        err(1, "File to large: %s", newname);
+        result = -DDELTA_ENEWIO;
+        goto out;
     } else if (newsize < 0) {
-        err(1, "Could not read file %s", newname);
+        result = -DDELTA_ENEWIO;
+        goto out;
     }
 
     /* Create the patch file */
-    if ((pf = fdopen(patchfd, "w")) == NULL)
-        err(1, "Cannot open patch file as FILE object: %s", patchname);
+    if ((pf = fdopen(patchfd, "w")) == NULL) {
+        result = -DDELTA_EPATCHIO;
+        goto out;
+    }
 
     /* Header is "DDELTA40", followed by size of new file. Afterwards, there
      * are entries (see loop) */
-    fputs(DDELTA_MAGIC, pf);
-    write64(pf, (uint64_t) newsize);
+    if (fputs(DDELTA_MAGIC, pf) == EOF) {
+        result = -DDELTA_EPATCHIO;
+        goto out;
+    }
+    if (write64(pf, (uint64_t) newsize) < 0) {
+        result = -DDELTA_EPATCHIO;
+        goto out;
+    }
 
     scan = 0;
     len = 0;
@@ -270,20 +288,24 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
                 lenb -= lens;
             };
 
-            if (lenf < 0)
-                err(1, "lenf is negative");
+            if (lenf < 0 || (scan - lenb) - (lastscan + lenf) < 0) {
+                result = -DDELTA_EALGO;
+                goto out;
+            }
             write64(pf, (uint64_t) lenf);
-            if ((scan - lenb) - (lastscan + lenf) < 0)
-                err(1, "len extra is negative");
             write64(pf, (uint64_t)((scan - lenb) - (lastscan + lenf)));
             write64(pf, ddelta_to_unsigned((pos - lenb) - (lastpos + lenf)));
 
             for (i = 0; i < lenf; i++)
-                if (fputc(new[lastscan + i] - old[lastpos + i], pf) == EOF)
-                    err(1, "fputc(difference)");
+                if (fputc(new[lastscan + i] - old[lastpos + i], pf) == EOF) {
+                    result = -DDELTA_EPATCHIO;
+                    goto out;
+                }
             for (i = 0; i < (scan - lenb) - (lastscan + lenf); i++)
-                if (fputc(new[lastscan + lenf + i], pf) == EOF)
-                    err(1, "fputc(extra)");
+                if (fputc(new[lastscan + lenf + i], pf) == EOF) {
+                    result = -DDELTA_EPATCHIO;
+                    goto out;
+                }
 
             lastscan = scan - lenb;
             lastpos = pos - lenb;
@@ -292,19 +314,31 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
     };
 
     /* File terminator */
-    write64(pf, 0);
-    write64(pf, 0);
-    write64(pf, 0);
+    if (write64(pf, 0) < 0) {
+        result = -DDELTA_EPATCHIO;
+        goto out;
+    }
+    if (write64(pf, 0) < 0) {
+        result = -DDELTA_EPATCHIO;
+        goto out;
+    }
+    if (write64(pf, 0) < 0) {
+        result = -DDELTA_EPATCHIO;
+        goto out;
+    }
 
-    if (fclose(pf))
-        err(1, "fclose");
+out:
+    if (pf != NULL && fclose(pf)) {
+        result = -DDELTA_EPATCHIO;
+        goto out;
+    }
 
     /* Free the memory we used */
     free(I);
     free(old);
     free(new);
 
-    return 0;
+    return result;
 }
 
 #ifndef DDELTA_NO_MAIN
@@ -313,21 +347,35 @@ int main(int argc, char *argv[])
     int oldfd;
     int newfd;
     int patchfd;
+    int err;
 
     if (argc != 4) {
-        errx(1, "usage: %s oldfile newfile patchfile\n", argv[0]);
+        fprintf(stderr, "usage: %s oldfile newfile patchfile\n", argv[0]);
+        return 1;
     }
 
     oldfd = open(argv[1], O_RDONLY, 0);
-    if (oldfd < 0)
-        err(1, "%s", argv[1]);
+    if (oldfd < 0) {
+        perror(argv[1]);
+        return 1;
+    }
     newfd = open(argv[2], O_RDONLY, 0);
-    if (newfd < 0)
-        err(1, "%s", argv[2]);
-    patchfd = open(argv[3], O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (patchfd < 0)
-        err(1, "%s", argv[3]);
+    if (newfd < 0) {
+        perror(argv[2]);
+        return 1;
+    }
 
-    return ddelta_generate(argv[1], oldfd, argv[2], newfd, argv[3], patchfd);
+    patchfd = open(argv[3], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (patchfd < 0) {
+        perror(argv[3]);
+        return 1;
+    }
+
+    err = ddelta_generate(oldfd, newfd, patchfd);
+    if (err < 0) {
+        fprintf(stderr, "An error %d occured: %s", -err, strerror(errno));
+        return -err;
+    }
+    return 0;
 }
 #endif
