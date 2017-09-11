@@ -67,7 +67,7 @@ static int64_t ddelta_from_unsigned(uint64_t u)
 static int ddelta_header_read(struct ddelta_header *header, FILE *file)
 {
     if (fread(header, sizeof(*header), 1, file) < 1)
-        return -1;
+        return -DDELTA_EPATCHIO;
 
     header->new_file_size = ddelta_be64toh(header->new_file_size);
     return 0;
@@ -77,7 +77,7 @@ static int ddelta_entry_header_read(struct ddelta_entry_header *entry,
                                     FILE *file)
 {
     if (fread(entry, sizeof(*entry), 1, file) < 1)
-        return -1;
+        return -DDELTA_EPATCHIO;
 
     entry->diff = ddelta_be64toh(entry->diff);
     entry->extra = ddelta_be64toh(entry->extra);
@@ -104,15 +104,15 @@ static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint64_t size)
                                       sizeof(uchar_vector);
 
         if (fread(&patch, 1, toread, patchfd) < toread)
-            return -1;
+            return -DDELTA_EPATCHIO;
         if (fread(&old, 1, toread, oldfd) < toread)
-            return -1;
+            return -DDELTA_EOLDIO;
 
         for (i = 0; i < items_to_add; i++)
             old[i] += patch[i];
 
         if (fwrite(&old, 1, toread, newfd) < toread)
-            return -1;
+            return -DDELTA_ENEWIO;
 
         size -= toread;
     }
@@ -127,9 +127,9 @@ static int copy_bytes(FILE *a, FILE *b, uint64_t bytes)
         uint64_t toread = MIN(sizeof(buf), bytes);
 
         if (fread(&buf, toread, 1, a) < 1)
-            return -1;
+            return -DDELTA_EPATCHIO;
         if (fwrite(&buf, toread, 1, b) < 1)
-            return -1;
+            return -DDELTA_ENEWIO;
 
         bytes -= toread;
     }
@@ -146,12 +146,13 @@ int ddelta_apply(FILE *patchfd, FILE *oldfd, FILE *newfd)
 {
     struct ddelta_header header;
     struct ddelta_entry_header entry;
+    int err;
 
     if (ddelta_header_read(&header, patchfd) < 0)
-        return -1;
+        return -DDELTA_EMAGIC;
 
     if (memcmp(DDELTA_MAGIC, header.magic, sizeof(header.magic)) != 0)
-        return -42;
+        return -DDELTA_EMAGIC;
 
     while (ddelta_entry_header_read(&entry, patchfd) == 0) {
         if (entry.diff == 0 && entry.extra == 0 && entry.seek.value == 0) {
@@ -159,21 +160,20 @@ int ddelta_apply(FILE *patchfd, FILE *oldfd, FILE *newfd)
             return 0;
         }
 
-        if (apply_diff(patchfd, oldfd, newfd, entry.diff) < 0)
-            return -1;
+        if ((err = apply_diff(patchfd, oldfd, newfd, entry.diff)) < 0)
+            return err;
 
         /* Copy the bytes over */
-        if (copy_bytes(patchfd, newfd, entry.extra) < 0)
-            return -1;
+        if ((err = copy_bytes(patchfd, newfd, entry.extra)) < 0)
+            return err;
 
         /* Skip remaining bytes */
         if (fseek(oldfd, entry.seek.value, SEEK_CUR) < 0) {
-            fprintf(stderr, "Could not seek %ld bytes", entry.seek.value);
-            return -1;
+            return -DDELTA_EOLDIO;
         }
     }
 
-    return -1;
+    return -DDELTA_EPATCHIO;
 }
 
 #ifndef DDELTA_NO_MAIN

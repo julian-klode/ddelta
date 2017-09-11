@@ -34,6 +34,23 @@ struct ddelta_entry_header {
 };
 
 /**
+ * Error codes to be returned by ddelta functions.
+ *
+ * Each function returns a negated variant of these error code on success, and for the
+ * I/O errors, more information is available in errno.
+ */
+enum ddelta_error {
+    /** The patch file has an invalid magic or header could not be read */
+    DDELTA_EMAGIC = 1,
+    /** An I/O error occured while reading from (apply) or writing to (generate) the patch file */
+    DDELTA_EPATCHIO,
+    /** An I/O error occured while reading from the old file */
+    DDELTA_EOLDIO,
+    /** An I/O error occured while reading from (generate) or writing to (apply) the new file */
+    DDELTA_ENEWIO
+};
+
+/**
  * Generates a diff from the files in oldfd and newfd in patchfd.
  *
  * The old and new files must be seekable.
