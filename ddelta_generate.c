@@ -170,7 +170,7 @@ int ddelta_generate(const char *oldname, int oldfd, const char *newname,
 
     /* Header is "DDELTA40", followed by size of new file. Afterwards, there
      * are entries (see loop) */
-    fputs("DDELTA40", pf);
+    fputs(DDELTA_MAGIC, pf);
     write64(pf, (uint64_t) newsize);
 
     scan = 0;
