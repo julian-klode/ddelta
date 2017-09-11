@@ -26,18 +26,19 @@
  */
 
 #define _POSIX_SOURCE
+#include "ddelta.h"
+
 #include <sys/types.h>
 
 #include <errno.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 #include <divsufsort.h>
-
-#include "ddelta.h"
 
 #ifndef MIN
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
