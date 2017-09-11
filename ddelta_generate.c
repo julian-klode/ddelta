@@ -87,26 +87,34 @@ static off_t search(saidx_t *I, unsigned char *old, off_t oldsize,
     };
 }
 
-static int write64(FILE *file, uint64_t off)
+static uint64_t ddelta_htobe64(uint64_t host)
 {
 #if defined(__GNUC__) && defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-    uint64_t buf = __builtin_bswap64(off);
+    return __builtin_bswap64(host);
 #elif defined(__GNUC__) && defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    uint64_t buf = off;
+    return host;
 #else
-    unsigned char buf[8];
+    uint64_t be64;
+    unsigned char *buf = &be64;
 
-    buf[0] = (off >> 56) & 0xFF;
-    buf[1] = (off >> 48) & 0xFF;
-    buf[2] = (off >> 40) & 0xFF;
-    buf[3] = (off >> 32) & 0xFF;
-    buf[4] = (off >> 24) & 0xFF;
-    buf[5] = (off >> 16) & 0xFF;
-    buf[6] = (off >> 8) & 0xFF;
-    buf[7] = (off >> 0) & 0xFF;
+    buf[0] = (host >> 56) & 0xFF;
+    buf[1] = (host >> 48) & 0xFF;
+    buf[2] = (host >> 40) & 0xFF;
+    buf[3] = (host >> 32) & 0xFF;
+    buf[4] = (host >> 24) & 0xFF;
+    buf[5] = (host >> 16) & 0xFF;
+    buf[6] = (host >> 8) & 0xFF;
+    buf[7] = (host >> 0) & 0xFF;
+
+    return be64;
 #endif
+}
 
-    if (fwrite(&buf, sizeof(buf), 1, file) < 1)
+static int write64(FILE *file, uint64_t off)
+{
+    off = ddelta_htobe64(off);
+
+    if (fwrite(&off, sizeof(off), 1, file) < 1)
         return -DDELTA_EPATCHIO;
 
     return 0;
