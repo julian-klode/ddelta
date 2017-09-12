@@ -64,17 +64,19 @@ static int64_t ddelta_from_unsigned(uint64_t u)
     return u & 0x80000000 ? -(int64_t) ~(u - 1) : (int64_t) u;
 }
 
-static int ddelta_header_read(struct ddelta_header *header, FILE *file)
+int ddelta_header_read(struct ddelta_header *header, FILE *file)
 {
     if (fread(header, sizeof(*header), 1, file) < 1)
         return -DDELTA_EPATCHIO;
+    if (memcmp(DDELTA_MAGIC, header->magic, sizeof(header->magic)) != 0)
+        return -DDELTA_EMAGIC;
 
     header->new_file_size = ddelta_be64toh(header->new_file_size);
     return 0;
 }
 
-static int ddelta_entry_header_read(struct ddelta_entry_header *entry,
-                                    FILE *file)
+int ddelta_entry_header_read(struct ddelta_entry_header *entry,
+                             FILE *file)
 {
     if (fread(entry, sizeof(*entry), 1, file) < 1)
         return -DDELTA_EPATCHIO;
@@ -142,17 +144,13 @@ static int copy_bytes(FILE *a, FILE *b, uint64_t bytes)
  * The oldfd must be seekable, the patchfd and newfd are read/written
  * sequentially.
  */
-int ddelta_apply(FILE *patchfd, FILE *oldfd, FILE *newfd)
+int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, FILE *newfd)
 {
-    struct ddelta_header header;
     struct ddelta_entry_header entry;
     int err;
 
-    if (ddelta_header_read(&header, patchfd) < 0)
-        return -DDELTA_EMAGIC;
-
-    if (memcmp(DDELTA_MAGIC, header.magic, sizeof(header.magic)) != 0)
-        return -DDELTA_EMAGIC;
+    /* It's unused for now, though that might change. */
+    (void) header;
 
     while (ddelta_entry_header_read(&entry, patchfd) == 0) {
         if (entry.diff == 0 && entry.extra == 0 && entry.seek.value == 0) {
@@ -182,6 +180,7 @@ int main(int argc, char *argv[])
     FILE *old;
     FILE *new;
     FILE *patch;
+    struct ddelta_header header;
 
     if (argc != 4) {
         fprintf(stderr, "usage: %s oldfile newfile patchfile\n", argv[0]);
@@ -198,7 +197,10 @@ int main(int argc, char *argv[])
     if (patch == NULL)
         return perror("Cannot open patch"), 1;
 
-    printf("Result: %d\n", ddelta_apply(patch, old, new));
+    if (ddelta_header_read(&header, patch) < 0)
+        return fprintf(stderr, "Not a ddelta file"), 1;
+
+    printf("Result: %d\n", ddelta_apply(&header, patch, old, new));
 
     return 0;
 }

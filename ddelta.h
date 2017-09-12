@@ -67,10 +67,22 @@ enum ddelta_error {
 int ddelta_generate(int oldfd, int newfd, int patchfd);
 
 /**
+ * Read a header from the given file.
+ *
+ * After the header has been read, you can use header->new_file_size to get
+ * the size of the target file.
+ *
+ * @return 0 on success,
+ *         -DDELTA_EPATCHIO on I/O errors,
+ *         -DDELTA_EMAGIC if it is not a ddelta file
+ */
+int ddelta_header_read(struct ddelta_header *header, FILE *patchfd);
+
+/**
  * Generates a new file from a given patch and an old file.
  *
  * The old file must be seekable.
  */
-int ddelta_apply(FILE *patchfd, FILE *oldfd, FILE *newfd);
+int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, FILE *newfd);
 
 #endif
