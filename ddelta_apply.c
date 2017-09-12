@@ -148,14 +148,12 @@ int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, FILE 
 {
     struct ddelta_entry_header entry;
     int err;
-
-    /* It's unused for now, though that might change. */
-    (void) header;
+    uint64_t bytes_written = 0;
 
     while (ddelta_entry_header_read(&entry, patchfd) == 0) {
         if (entry.diff == 0 && entry.extra == 0 && entry.seek.value == 0) {
             fflush(newfd);
-            return 0;
+            return bytes_written == header->new_file_size ? 0 : -DDELTA_EPATCHSHORT;
         }
 
         if ((err = apply_diff(patchfd, oldfd, newfd, entry.diff)) < 0)
@@ -169,6 +167,8 @@ int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, FILE 
         if (fseek(oldfd, entry.seek.value, SEEK_CUR) < 0) {
             return -DDELTA_EOLDIO;
         }
+
+        bytes_written += entry.diff + entry.extra;
     }
 
     return -DDELTA_EPATCHIO;

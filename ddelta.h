@@ -53,7 +53,9 @@ enum ddelta_error {
     /** An I/O error occured while reading from the old file */
     DDELTA_EOLDIO,
     /** An I/O error occured while reading from (generate) or writing to (apply) the new file */
-    DDELTA_ENEWIO
+    DDELTA_ENEWIO,
+    /** Patch ended before target file was fully written */
+    DDELTA_EPATCHSHORT
 };
 
 /**
