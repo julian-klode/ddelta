@@ -326,10 +326,12 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
                 }
             }
 
-            if (fwrite(new + lastscan + lenf,
-                       (scan - lenb) - (lastscan + lenf), 1, pf) < 1) {
-                result = -DDELTA_EPATCHIO;
-                goto out;
+            if ((scan - lenb) - (lastscan + lenf)) {
+                if (fwrite(new + lastscan + lenf,
+                           (scan - lenb) - (lastscan + lenf), 1, pf) < 1) {
+                    result = -DDELTA_EPATCHIO;
+                    goto out;
+                }
             }
 
             lastscan = scan - lenb;
