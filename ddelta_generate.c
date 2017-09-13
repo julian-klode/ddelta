@@ -345,9 +345,15 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
         goto out;
 
 out:
-    if (pf != NULL && fclose(pf)) {
-        result = -DDELTA_EPATCHIO;
-        goto out;
+
+    if (pf != NULL) {
+        int save_errno = errno;
+
+        if (fclose(pf) && result == 0) {
+            result = -DDELTA_EPATCHIO;
+        } else {
+            errno = save_errno;
+        }
     }
 
     /* Free the memory we used */
