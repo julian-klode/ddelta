@@ -16,11 +16,10 @@ workingdir=$(mktemp -d)
 trap "{ rm -r $workingdir; }" EXIT
 cd $workingdir
 
-
+echo "Building $output" >&2
 
 dpkg-deb --raw-extract $alpha alpha/
 dpkg-deb --raw-extract $beta beta/
-find alpha beta
 
 cd beta; find -type f | grep -v DEBIAN | while read name; do
 	if [ -e ../alpha/$name ]; then
@@ -32,5 +31,7 @@ cd beta; find -type f | grep -v DEBIAN | while read name; do
 done
 
 cd ..
+
+echo "Built $output" >&2
 
 dpkg-deb --build beta $output
