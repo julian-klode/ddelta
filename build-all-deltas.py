@@ -21,4 +21,7 @@ for pkg in updates:
 	rel_ver, rel_arch, rel_path = release[pkg]
 	upd_ver, upd_arch, upd_path = updates[pkg]
 
+	if rel_ver == upd_ver:
+		continue
+
 	print("/home/jak/ddelta/build-delta.sh", rel_path, upd_path, "{}/{}_{}_{}_{}.δdeb".format(os.path.dirname(upd_path), pkg, rel_ver, upd_ver, upd_arch))
