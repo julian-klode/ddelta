@@ -9,6 +9,7 @@ ddelta_dir=$(dirname $0)
 ddelta_generate=$(realpath $ddelta_dir/ddelta_generate)
 alpha=$(realpath $1)
 beta=$(realpath $2)
+output=$(realpath $3)
 outputname=$(dirname $beta)/$(basename $alpha)_$(basename $beta).deb
 workingdir=$(mktemp -d)
 
@@ -32,4 +33,4 @@ done
 
 cd ..
 
-dpkg-deb --build beta $alpha_$beta.δdeb
+dpkg-deb --build beta $output
