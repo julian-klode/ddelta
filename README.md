@@ -35,6 +35,7 @@ The bsdiff format consists of a header
     uint64_t new_file_size;
 
 and three blocks:
+
     unsigned char control[control_size];
     unsigned char diff[diff_size];
     unsigned char extra[];
