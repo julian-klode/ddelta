@@ -19,7 +19,7 @@ For diffing:
 For patching:
 
 * memory requirement is constant (rather than `m + n`) - three buffers essentially.
-* only the patch file must be seek()able
+* only the old file must be seek()able
 
 Furthermore, libdivsufsort is needed for compiling and running the diff
 algorithm. It's not needed for patching.
